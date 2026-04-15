@@ -1,0 +1,29 @@
+name: 'dns_cf_push_g'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  schedule:
+    - cron: '10 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+      - name: 'Set up Python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+      - name: 'Install dependencies'
+        run: if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: 'run dnscf for g'
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_DNS_NAME: ${{ secrets.CF_DNS_NAME_G }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python dnscf.py
