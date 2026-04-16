@@ -1,4 +1,4 @@
-name: 'dns_cf_push_c'
+name: 'dns_cf_c'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
