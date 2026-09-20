@@ -72,6 +72,7 @@ class Target:
 class Config:
     source_url: str = "https://ip.164746.xyz/ipTop.html"
     interval_seconds: int = 21600
+    source_interval_seconds: int | None = None
     timeout_seconds: int = 15
     attempts: int = 3
     dry_run: bool = True
@@ -82,6 +83,11 @@ class Config:
     pushplus_token_env: str = ""
     targets: tuple = field(default_factory=tuple)
     credential_values: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def __post_init__(self):
+        # Legacy configurations inherit their own DNS interval, not the new default.
+        if self.source_interval_seconds is None:
+            object.__setattr__(self, 'source_interval_seconds', self.interval_seconds)
 
     def credential(self, name):
         # A persisted null is an explicit clear, not a fallback to the environment.
@@ -114,13 +120,15 @@ def parse_config(raw, path='config.toml'):
     allowed = set(Config.__dataclass_fields__) - {'targets', 'credential_values'}
     keys(service, allowed, 'service')
     values = {key: service.get(key, getattr(defaults, key)) for key in allowed}
+    if 'source_interval_seconds' not in service:
+        values['source_interval_seconds'] = values['interval_seconds']
     try:
         url = urlsplit(text(values['source_url'], 'source_url'))
     except ValueError:
         raise AppError('source_url: URL 无效') from None
     if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
         raise AppError('source_url: 只允许不带凭据与片段的 HTTPS URL')
-    for name, low, high in [('interval_seconds', 30, 604800), ('timeout_seconds', 1, 60), ('attempts', 1, 5), ('max_ips', 1, 1000), ('port', 1, 65535)]:
+    for name, low, high in [('interval_seconds', 30, 604800), ('source_interval_seconds', 30, 604800), ('timeout_seconds', 1, 60), ('attempts', 1, 5), ('max_ips', 1, 1000), ('port', 1, 65535)]:
         integer(values[name], low, high, name)
     if type(values['dry_run']) is not bool:
         raise AppError('dry_run: 必须是 true 或 false')

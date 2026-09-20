@@ -144,32 +144,108 @@ class Runner:
         self.schedule_context = threading.local()
         self.last_completed = None
         self.next_due = time.monotonic()
+        self.last_source_completed = None
+        self.next_source_due = self.next_due
+        self.source_ips = None  # Never authorize DNS from persisted display data.
+        self.source_success_time = None
         self.worker = None
+        self.state.save(source_valid=False, source_status='starting',
+                        source_interval_seconds=config.source_interval_seconds,
+                        interval_seconds=config.interval_seconds, dry_run=config.dry_run,
+                        **self._deadlines(self.next_due, self.next_source_due))
+
+    @staticmethod
+    def _deadlines(dns, source):
+        wall, mono = time.time(), time.monotonic()
+        def stamp(deadline):
+            return datetime.fromtimestamp(wall + max(0, deadline - mono), timezone.utc).isoformat(timespec='seconds')
+        return {'next_run_at': stamp(dns), 'next_dns_run_at': stamp(dns), 'next_source_run_at': stamp(source)}
 
     def configure(self, config):
         """Caller reserves lock before changing settings; no network or automatic run."""
         with self.condition:
             next_due = (self.last_completed + config.interval_seconds
                         if self.last_completed is not None else self.next_due)
-            next_run_at = datetime.fromtimestamp(time.time() + max(0, next_due - time.monotonic()),
-                                                  timezone.utc).isoformat(timespec='seconds')
+            source_changed = (config.source_url, config.max_ips) != (self.config.source_url, self.config.max_ips)
+            next_source_due = (time.monotonic() if source_changed else
+                               self.last_source_completed + config.source_interval_seconds
+                               if self.last_source_completed is not None else self.next_source_due)
             # Do not arm new settings if persistent state cannot be saved.
             self.state.save(status='starting', dry_run=config.dry_run, interval_seconds=config.interval_seconds,
-                            next_run_at=next_run_at)
+                            source_interval_seconds=config.source_interval_seconds,
+                            source_valid=False if source_changed else self.source_ips is not None,
+                            **({'source_status': 'starting', 'source_error': None} if source_changed else {}),
+                            **self._deadlines(next_due, next_source_due))
             self.config = config
             self.session_success = False
             self.next_due = next_due
+            self.next_source_due = next_source_due
+            if source_changed:
+                self.source_ips = None
+                self.source_success_time = None
+                self.last_source_completed = None
             if self.owns_http:
                 self.http.timeout, self.http.attempts = config.timeout_seconds, config.attempts
             self.condition.notify_all()
 
-    def _completed(self):
+    def _completed(self, source=False):
         with self.condition:
-            self.last_completed = time.monotonic()
-            self.next_due = self.last_completed + self.config.interval_seconds
-            self.state.save(next_run_at=datetime.fromtimestamp(time.time() + self.config.interval_seconds,
-                                                             timezone.utc).isoformat(timespec='seconds'))
+            if source:
+                self.last_source_completed = time.monotonic()
+                self.next_source_due = self.last_source_completed + self.config.source_interval_seconds
+            else:
+                self.last_completed = time.monotonic()
+                self.next_due = self.last_completed + self.config.interval_seconds
+            self.state.save(**self._deadlines(self.next_due, self.next_source_due))
             self.condition.notify_all()
+
+    def _fetch(self, config):
+        # Revoke first, including on unexpected errors or interrupted persistence.
+        self.source_ips = None
+        self.source_success_time = None
+        self.state.save(source_valid=False, source_status='running', next_source_run_at=None)
+        try:
+            ips = fetch_ips(config, self.http)
+            self.state.save(ips=ips, last_source_success=now(), source_valid=True,
+                            source_status='ok', source_error=None)
+            self.source_ips = list(ips)
+            self.source_success_time = time.monotonic()
+            return ips
+        except BaseException as error:
+            self.session_success = False
+            self.state.save(source_valid=False, source_status='error', source_error=safe_error(error))
+            raise
+        finally:
+            try:
+                self._completed(source=True)
+            except BaseException:
+                self.source_ips = None
+                self.source_success_time = None
+                self.session_success = False
+                raise
+
+    def refresh_source(self, scheduled=False):
+        """IP-only job, sharing the DNS/config reservation. No provider or notification."""
+        if not self.lock.acquire(blocking=False):
+            raise BusyError('任务已经在运行')
+        try:
+            if self.stop.is_set():
+                raise AppError('服务正在停止')
+            if scheduled and time.monotonic() < self.next_source_due:
+                return None
+            result = {'kind': 'source', 'mode': 'source', 'started_at': now(), 'status': 'ok',
+                      'changed': 0, 'planned': 0, 'targets': [], 'error': None}
+            self.state.save(current_run=copy.deepcopy(result))
+            try:
+                result['ip_count'] = len(self._fetch(self.config))
+            except Exception as error:
+                result.update(status='error', error=safe_error(error))
+            result['finished_at'] = now()
+            snapshot = self.state.snapshot()
+            self.state.save(current_run=None, history=snapshot['history'] + [result], runs=snapshot['runs'] + 1)
+            return result
+        finally:
+            self.lock.release()
 
     def start_async(self, dry_run, confirm_apply=False):
         from .admin import AdminError
@@ -215,28 +291,33 @@ class Runner:
             if getattr(self.schedule_context, 'active', False) and time.monotonic() < self.next_due:
                 return None
             try:
-                return self._run(self.config)
+                return self._run(self.config, refresh=not getattr(self.schedule_context, 'active', False))
             finally:
                 self._completed()
         finally:
             self.lock.release()
 
-    def _run(self, config=None):
+    def _run(self, config=None, refresh=True):
         config = config or self.config
         self.session_success = False
         names = {name for target in config.targets for name in target.credential_names()}
         self.http.credentials = {name: config.credential(name) for name in names}
         # DNS listing bounds are independent of the source IP count.
         self.http.record_limit = 1000
-        result = {'started_at': now(), 'mode': 'preview' if config.dry_run else 'apply',
+        result = {'kind': 'manual' if refresh else 'dns', 'started_at': now(), 'mode': 'preview' if config.dry_run else 'apply',
                   'status': 'ok', 'changed': 0, 'planned': 0, 'targets': [], 'error': None}
         self.state.save(status='running', dry_run=config.dry_run, interval_seconds=config.interval_seconds,
-                        last_started=result['started_at'], next_run_at=None, targets=[], current_run=copy.deepcopy(result))
+                        last_started=result['started_at'], next_run_at=None, next_dns_run_at=None,
+                        targets=[], current_run=copy.deepcopy(result))
         try:
             # Validate all credentials before touching any target; empty-target preview needs none.
             config.validate_credentials()
-            ips = fetch_ips(config, self.http)
-            self.state.save(ips=ips, last_source_success=now())
+            if refresh:
+                self._fetch(config)
+            if self.source_ips is None:
+                raise AppError('当前进程尚无有效来源结果；等待 IP 获取成功，DNS 未执行')
+            ips = list(self.source_ips)
+            result['source_fetched_at'] = self.state.snapshot().get('last_source_success')
             record_count = 0
             for target in config.targets:
                 if self.stop.is_set():
@@ -328,13 +409,17 @@ class Runner:
     def loop(self):
         while not self.stop.is_set():
             with self.condition:
-                delay = self.next_due - time.monotonic()
+                delay = min(self.next_due, self.next_source_due) - time.monotonic()
                 if delay > 0 or self.lock.locked():
                     self.condition.wait(timeout=min(max(delay, 0.05), 0.25))
                     continue
             self.schedule_context.active = True
             try:
-                self.run()
+                # When both are due (including startup), refresh before DNS.
+                if time.monotonic() >= self.next_source_due:
+                    self.refresh_source(scheduled=True)
+                if time.monotonic() >= self.next_due:
+                    self.run()
             except BusyError:
                 pass
             except AppError:
@@ -348,7 +433,11 @@ class Runner:
         snapshot = self.state.snapshot()
         success = snapshot.get('last_success')
         ready = False
-        if (self.session_success and success and not snapshot['pending_operations']
+        source_ready = (self.source_ips is not None and self.source_success_time is not None
+                        and 0 <= time.monotonic() - self.source_success_time <= max(120, self.config.source_interval_seconds * 2))
+        snapshot['source_valid'] = self.source_ips is not None
+        snapshot['source_ready'] = source_ready
+        if (source_ready and self.session_success and success and not snapshot['pending_operations']
                 and snapshot.get('dry_run') == self.config.dry_run and snapshot['status'] in ('ok', 'running')):
             elapsed = time.time() - datetime.fromisoformat(success).timestamp()
             ready = 0 <= elapsed <= max(120, self.config.interval_seconds * 2)

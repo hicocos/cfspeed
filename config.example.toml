@@ -1,7 +1,8 @@
 # 本机 / 直接运行配置。默认只获取 IP，不操作 DNS。
 [service]
 source_url = "https://ip.164746.xyz/ipTop.html"
-interval_seconds = 21600 # 6 hours
+interval_seconds = 21600 # DNS 同步：6 小时
+source_interval_seconds = 21600 # IP 获取：6 小时；旧配置省略时继承 DNS 间隔
 timeout_seconds = 15
 attempts = 3
 max_ips = 30

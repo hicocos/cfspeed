@@ -14,7 +14,7 @@ import time
 from .config import AppError, BUILTIN_SOURCE_URLS, env_name, integer, keys, parse_config
 from .crypto import CryptoError, SecretStore, read_regular_file, strict_json
 
-SERVICE_FIELDS = ('source_url', 'interval_seconds', 'timeout_seconds', 'attempts',
+SERVICE_FIELDS = ('source_url', 'interval_seconds', 'source_interval_seconds', 'timeout_seconds', 'attempts',
                   'dry_run', 'max_ips', 'pushplus_token_env')
 COOKIE = 'cfspeed_session'
 MAX_CONFIG_BYTES = 524288  # Includes base64/tag overhead for the encrypted map.
@@ -128,6 +128,8 @@ def effective_config(base, data, force_preview=False):
     service = {name: getattr(base, name) for name in base.__dataclass_fields__
                if name not in ('targets', 'credential_values')}
     service.update(data['service'])
+    if 'source_interval_seconds' not in data['service']:
+        service['source_interval_seconds'] = service['interval_seconds']
     if force_preview:
         service['dry_run'] = True
     config = parse_config({'service': service, 'targets': data['targets']})
@@ -252,6 +254,8 @@ class Admin:
                     if self.force_preview:
                         raise AdminError('命令行 --dry-run 强制预览，不能在 Web 中关闭')
                 candidate = copy.deepcopy(self.data)
+                # Freeze the inherited interval before merging a DNS-only edit.
+                candidate['service'].setdefault('source_interval_seconds', self.runner.config.source_interval_seconds)
                 candidate['service'].update(service)
                 if 'targets' in payload:
                     candidate['targets'] = payload['targets']

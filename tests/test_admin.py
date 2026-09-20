@@ -486,8 +486,11 @@ class AdminTests(unittest.TestCase):
         scheduler.start()
         try:
             self.assertEqual(self.save(service={'interval_seconds': 30})[0], 200)
-            self.assertTrue(self.http.started.wait(2))
-            self.assertEqual(self.http.calls, 2)
+            deadline = time.monotonic() + 2
+            while self.runner.state.snapshot()['runs'] < 2 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(self.runner.state.snapshot()['runs'], 2)
+            self.assertEqual(self.http.calls, 1)  # DNS deadline does not fetch the source.
         finally:
             self.runner.stop.set()
             scheduler.join(2)
@@ -630,7 +633,7 @@ class BackendIntegrationTests(unittest.TestCase):
                 self.assertEqual((directory / 'data' / 'initial-admin-password.txt').read_bytes(), initial)
             self.assertEqual(source.calls, 2)
             state = State(directory / 'data').snapshot()
-            self.assertEqual(state['runs'], 2)
+            self.assertEqual(state['runs'], 4)  # Startup records source and DNS separately.
             self.assertEqual(state['status'], 'starting')
             base = load_config(config_path)
             runner = Runner(base, State(base.state_dir), SourceFixture())
