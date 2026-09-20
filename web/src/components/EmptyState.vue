@@ -1,0 +1,1 @@
+<script setup lang="ts">import Icon from './Icon.vue'; withDefaults(defineProps<{ title?: string; text?: string; icon?: string }>(), { title: '这里还没有内容', text: '完成配置后，真实数据将显示在这里。', icon: 'image' })</script><template><div class="empty-state"><span class="empty-icon"><Icon :name="icon" :size="30" /></span><h3>{{ title }}</h3><p>{{ text }}</p><slot /></div></template>

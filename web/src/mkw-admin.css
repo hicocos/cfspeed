@@ -1,0 +1,273 @@
+/* MKW console finish. Load after design.css and compact-admin.css.
+   Surface-only overrides: existing sizes, reflow, visibility and table geometry
+   remain authoritative. Legacy accent names are aliased locally, not globally. */
+.admin-shell,
+.login-page {
+  --ink: #203d63;
+  --muted: #566d88;
+  --green: #2463ad;
+  --lime: #dfeeff;
+  --line: #d5e3f1;
+  --paper: #ffffff;
+  --bg: #f1f7fd;
+  --mkw-blue: #2463ad;
+  --mkw-blue-hover: #194e8d;
+  --mkw-blue-soft: #e3f0ff;
+  --mkw-pink-soft: #fff0f6;
+  --mkw-shadow: 0 8px 28px #355a8510, inset 0 1px 0 #ffffff;
+  color: var(--ink);
+  color-scheme: light;
+  background: transparent;
+}
+
+.admin-shell::selection,
+.admin-shell ::selection,
+.login-page::selection,
+.login-page ::selection { color: #173b67; background: #cce5ff; }
+
+/* Compact navigation keeps every entry accessible without oversized gaps. */
+.admin-shell .admin-sidebar { padding: 16px 12px 12px; }
+.admin-shell .admin-sidebar > .brand { margin: 0 10px 16px; }
+.admin-shell .admin-sidebar > nav { gap: 2px; }
+.admin-shell .admin-sidebar nav > a {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 7px 12px;
+  gap: 10px;
+}
+.admin-shell .admin-sidebar .nav-group {
+  flex-shrink: 0;
+  margin: 4px 0 2px;
+  padding: 0 12px;
+  line-height: 16px;
+}
+.admin-shell .admin-sidebar .nav-group:not(:first-child) { margin-top: 10px; }
+.admin-shell .sidebar-bottom { padding-top: 8px; }
+.admin-shell .sidebar-public { min-height: 40px; padding: 8px 12px; margin-bottom: 4px; }
+.admin-shell .user-block { padding-top: 10px; }
+@media (max-width: 760px) {
+  .admin-shell .admin-sidebar { width: min(224px, calc(100vw - 48px)); padding-top: max(14px, env(safe-area-inset-top)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .admin-shell .admin-sidebar > .brand { margin-bottom: 12px; }
+  .admin-shell .admin-sidebar nav > a { min-height: 44px; padding-block: 8px; }
+}
+
+/* Light navigation rail and acrylic chrome; never change mobile visibility. */
+.admin-shell .admin-sidebar {
+  background: #fff;
+  box-shadow: inset -1px 0 0 var(--line), 6px 0 24px #355a8506;
+}
+.admin-shell .admin-sidebar > .brand,
+.login-page .brand { color: var(--ink); }
+.admin-shell .admin-sidebar .brand-mark,
+.login-page .brand-mark {
+  color: #ffffff;
+  background: linear-gradient(145deg, #4086c9, #2463ad);
+  box-shadow: 0 4px 12px #2463ad20, inset 0 1px 0 #ffffff40;
+}
+.admin-shell .admin-sidebar .brand small,
+.login-page .brand small,
+.admin-shell .nav-group,
+.admin-shell .user-block small { color: var(--muted); }
+.admin-shell .admin-sidebar nav > a { color: #4f6681; }
+.admin-shell .admin-sidebar nav > a:hover {
+  color: var(--mkw-blue-hover);
+  background: #e9f3ff;
+}
+.admin-shell .admin-sidebar nav > a.router-link-active {
+  color: #194e8d;
+  background: #dcecff;
+  box-shadow: inset 3px 0 0 #4b8dce, inset 0 1px 0 #ffffffa6;
+}
+.admin-shell .admin-sidebar nav > a.navigation-pending:not(.router-link-active) {
+  color: var(--mkw-blue-hover);
+  background: #eaf3ff;
+  box-shadow: inset 3px 0 0 #79a6d4;
+}
+.admin-shell .sidebar-public { color: #4f6681; }
+.admin-shell .sidebar-public:hover { color: var(--mkw-blue-hover); }
+.admin-shell .user-block { border-color: var(--line); }
+.admin-shell .user-block strong { color: var(--ink); }
+.admin-shell .avatar { color: #315784; background: #dcecff; }
+.admin-shell .admin-topbar {
+  background: #fff;
+  border-color: var(--line);
+  box-shadow: 0 2px 12px #355a8505;
+}
+.admin-shell .admin-topbar strong { color: var(--ink); }
+.admin-shell .admin-topbar .muted,
+.admin-shell .breadcrumb-divider { color: var(--muted); }
+.admin-shell .admin-topbar .text-link { color: var(--mkw-blue); }
+.admin-shell .sidebar-overlay { background: #18355452; }
+.admin-shell .admin-footer { color: var(--muted); border-color: var(--line); }
+
+/* Retain the existing typeface and compact type scale. */
+.admin-shell :is(h1, h2, h3),
+.login-page :is(h1, h2, h3),
+.admin-shell .stat-grid strong,
+.admin-shell .queue-item-main strong { color: var(--ink); }
+.admin-shell .eyebrow,
+.login-page .eyebrow,
+.admin-shell .admin-heading .eyebrow { color: var(--mkw-blue); }
+.admin-shell :is(.muted, .help, .micro-label, .safe-note, .subtle-link,
+  .admin-heading p, .card-heading p, .empty-state p, .image-meta,
+  .image-unavailable, .pagination, .detail-list dt, .drop-zone p,
+  .drop-zone small, .queue-heading, .queue-heading button,
+  .queue-item-main small, .setup-banner p, .settings-policy p,
+  .prose-list, .prose p, .prose .preserve-lines,
+  .library-toolbar .checkbox-field, .library-toolbar .muted),
+.login-page :is(.muted, .help, .login-help, .login-foot, .subtle-link) {
+  color: var(--muted);
+}
+.admin-shell .queue-item-main p:not(.inline-error) { color: var(--muted); }
+.admin-shell .stat-grid :is(small, .card > span, .card > .split > span),
+.admin-shell :is(.bar-column, .bar-column > span, .bar-column small) {
+  color: var(--muted);
+}
+.admin-shell :is(td, .stat-grid strong, .image-meta, .detail-list dd) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bright acrylic panels with a blue-tinted edge, not heavier containers. */
+.admin-shell .admin-main .card,
+.admin-shell :is(.image-card, .storage-card, .modal),
+.login-page .login-card {
+  color: var(--ink);
+  background: #ffffffed;
+  border-color: var(--line);
+  box-shadow: var(--mkw-shadow);
+}
+.login-page .login-card { box-shadow: 0 20px 60px #355a8517, inset 0 1px 0 #fff; }
+.admin-shell .modal::backdrop { background: #18355466; }
+.admin-shell .modal :is(p, .field),
+.admin-shell .detail-list dd { color: #405c7b; }
+.admin-shell :is(.report-detail) {
+  color: #405c7b;
+  background: #f0f6fd;
+  border-color: var(--line);
+}
+.admin-shell :is(.setup-banner, .drop-zone) {
+  background: #f1f8ff;
+  border-color: #bdd5ed;
+}
+.admin-shell .drop-zone.dragging { background: #e0efff; border-color: #397bbb; }
+.admin-shell :is(.empty-icon, .storage-icon, .upload-symbol, .queue-file-icon,
+  .feature-icon, .setup-banner .feature-icon) {
+  color: #4075ab;
+  background: #eaf3ff;
+  border-color: #ccdeef;
+}
+.admin-shell .stat-grid .card > .split > svg { color: #4075ab; }
+.admin-shell .image-card:hover { border-color: #99bee2; box-shadow: 0 6px 22px #355a8515; }
+.admin-shell .image-card.selected { border-color: #4e8dc9; box-shadow: 0 0 0 2px #4e8dc930; }
+.admin-shell :is(.image-card-visual, .edit-image-summary > .image-preview) { background: #edf4fc; }
+.admin-shell :is(.image-card-actions, .upload-item, .pagination, .tabs, .bar-track) { border-color: var(--line); }
+/* Legacy batch-toolbar uses !important; this is the sole required exception. */
+.admin-shell .admin-main .card.batch-toolbar { background: #eaf3ff !important; }
+.admin-shell .bar { background: linear-gradient(#5c9bda, #b9d9f6); }
+.admin-shell .stage-progress span { background: #e0eaf4; }
+.admin-shell .stage-progress span.current { background: #83b5e3; }
+/* Completed upload stages retain a semantic success cue. */
+.admin-shell .stage-progress span.done { background: #579276; }
+
+/* Action states exclude destructive controls so their red remains meaningful. */
+.admin-shell .btn:not(.danger),
+.login-page .btn:not(.danger) {
+  color: #28578b;
+  background: #ffffff;
+  border-color: #b6cee6;
+}
+.admin-shell .btn:not(.danger):hover:not(:disabled),
+.login-page .btn:not(.danger):hover:not(:disabled) {
+  color: var(--mkw-blue-hover);
+  background: #eaf3ff;
+  border-color: #88afd6;
+}
+.admin-shell .btn.primary:not(.danger),
+.login-page .btn.primary:not(.danger) {
+  color: #ffffff;
+  background: var(--mkw-blue);
+  border-color: var(--mkw-blue);
+  box-shadow: inset 0 1px 0 #ffffff26;
+}
+.admin-shell .btn.primary:not(.danger):hover:not(:disabled),
+.login-page .btn.primary:not(.danger):hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--mkw-blue-hover);
+  border-color: var(--mkw-blue-hover);
+}
+.admin-shell .btn.lime:not(.danger) { color: #24558a; background: var(--mkw-blue-soft); border-color: #c6ddf4; }
+.admin-shell .btn.quiet:not(.danger) { background: transparent; border-color: transparent; }
+.admin-shell :is(.text-link, .text-button, .help a, .prose a, .stat-grid a, .edit-image-summary a),
+.login-page :is(.text-link, .text-button, .help a) { color: var(--mkw-blue); }
+.admin-shell :is(.text-link, .text-button, .help a, .prose a, .stat-grid a):hover,
+.login-page :is(.text-link, .text-button, .help a):hover { color: var(--mkw-blue-hover); }
+.admin-shell .icon-btn { color: #496c94; }
+.admin-shell .icon-btn:hover { color: #194e8d; background: #e2efff; }
+.admin-shell .tabs button { color: var(--muted); }
+.admin-shell .tabs button.active { color: var(--mkw-blue); border-bottom-color: var(--mkw-blue); }
+.admin-shell .segmented { background: #eff5fc; border-color: var(--line); }
+.admin-shell .segmented button { color: var(--muted); }
+.admin-shell .segmented button.active { color: #194e8d; background: #dcecff; }
+
+.admin-shell .field :is(input, select, textarea),
+.login-page .field :is(input, select, textarea) {
+  color: var(--ink);
+  background: #fcfeff;
+  border-color: #b6cbe0;
+}
+.admin-shell .field :is(input, textarea)::placeholder,
+.login-page .field :is(input, textarea)::placeholder { color: #647992; opacity: 1; }
+.admin-shell input,
+.login-page input { accent-color: var(--mkw-blue); }
+.admin-shell .field :is(input, select, textarea):focus,
+.login-page .field :is(input, select, textarea):focus {
+  border-color: var(--mkw-blue);
+  outline: 3px solid #2463ad38;
+}
+.admin-shell :is(button, a, summary):focus-visible,
+.login-page :is(button, a, summary):focus-visible {
+  outline: 3px solid #2463ad;
+  outline-offset: 3px;
+}
+
+.admin-shell th { color: #425f80; background: #eef5fd; }
+.admin-shell td { color: #405c7b; }
+.admin-shell :is(th, td) { border-color: #e1ebf5; }
+.admin-shell td small { color: var(--muted); }
+.admin-shell tbody tr:hover { background: #f3f8ff; }
+.admin-shell :is(p, li, td) code { color: #315e8e; background: #eaf3fd; }
+.admin-shell :is(.tag, .count-label) { color: #506887; background: #edf4fc; }
+.admin-shell .code-block { color: #e6f1ff; background: #203c60; }
+.admin-shell .code-block header { color: #c0d4ee; border-color: #ffffff24; }
+.admin-shell .code-copy { color: #d2e5ff; }
+.admin-shell .code-copy:hover { color: #ffffff; }
+
+/* Pink is decorative, never a replacement for error or warning semantics. */
+.admin-shell .notice.info,
+.login-page .notice.info { color: #315e8e; background: #edf5ff; border-color: #c4daef; }
+.admin-shell .notice a,
+.login-page .notice a { color: inherit; }
+.admin-shell .notice.error,
+.admin-shell .notice[role="alert"],
+.login-page .notice.error { color: #963c35; background: #fff5f2; border-color: #ebc9c2; }
+.admin-shell .notice.success,
+.login-page .notice.success { color: #356448; background: #edf8f1; border-color: #c8e2d2; }
+.admin-shell .badge:is(.active, .sfw, .completed, .succeeded, .success, .resolved) { color: #356448; background: #e7f4ec; }
+.admin-shell .badge:is(.pending, .queued, .running, .processing, .uploaded, .open) { color: #795916; background: #fff3d6; }
+.admin-shell .badge:is(.failed, .deleted, .revoked, .nsfw) { color: #963c35; background: #fcebe7; }
+.admin-shell .badge:is(.disabled, .dismissed, .expired) { color: #596676; background: #edf0f4; }
+.admin-shell .link-success { color: #356448; }
+.admin-shell .error-cell { color: #963c35; }
+
+/* Limit blur to chrome and login, not every scrolling dashboard card.
+   Nearly opaque base surfaces remain readable without backdrop-filter. */
+@supports (backdrop-filter: blur(12px)) {
+  .admin-shell .admin-topbar,
+  .login-page .login-card { backdrop-filter: blur(12px); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .admin-shell .admin-topbar,
+  .admin-shell .admin-main .card,
+  .admin-shell .modal,
+  .login-page .login-card { background: #ffffff; backdrop-filter: none; }
+}

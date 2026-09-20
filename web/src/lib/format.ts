@@ -1,0 +1,5 @@
+export function number(n?:number){return n===undefined?'—':new Intl.NumberFormat('zh-CN').format(n)}
+export function date(value?:string){if(!value)return '—';const time=new Date(value);return Number.isNaN(time.valueOf())?'—':time.toLocaleString('zh-CN',{hour12:false})}
+const names:Record<string,string>={ok:'成功',error:'失败',starting:'准备中',running:'执行中',preview:'预览',apply:'正式同步',interrupted:'已中断',unselected:'未选中（保留旧值）',unchanged:'无需更新',planned:'待更新',applying:'更新中',verified:'已核验',failed_or_unverified:'待核对',interrupted_unverified:'中断待核对',disabled:'未启用',accepted:'已提交',success:'成功',active:'正常',pending:'待处理'}
+export function label(value:string){return names[value]||value}
+export async function copy(value:string){if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(value);return}const area=document.createElement('textarea');area.value=value;area.style.position='fixed';area.style.opacity='0';document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();if(!ok)throw new Error('复制失败，请手动选择并复制。')}

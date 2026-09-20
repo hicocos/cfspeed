@@ -1,0 +1,12 @@
+**
+!cfspeed/
+!cfspeed/*.py
+!web/
+!web/**
+web/node_modules/
+web/dist/
+web/.env*
+**/__pycache__/
+**/*.pyc
+!Dockerfile
+!requirements.lock

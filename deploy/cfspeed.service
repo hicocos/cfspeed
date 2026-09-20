@@ -1,0 +1,27 @@
+[Unit]
+Description=cfspeed IP source to DNS synchronizer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=cfspeed
+Group=cfspeed
+WorkingDirectory=/opt/cfspeed
+EnvironmentFile=/etc/cfspeed.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/cfspeed/.venv/bin/python -m cfspeed serve --config /etc/cfspeed.toml --state-dir /var/lib/cfspeed
+Restart=on-failure
+RestartSec=10
+StateDirectory=cfspeed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cfspeed
+MemoryMax=128M
+TasksMax=64
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,2 @@
+# Authenticated encryption at rest. Keep pinned and audit updates.
+cryptography==50.0.1

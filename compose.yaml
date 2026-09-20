@@ -1,0 +1,31 @@
+name: cfspeed
+services:
+  cfspeed:
+    build: .
+    image: cfspeed:0.2.0-local
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    volumes:
+      - ./config.docker.toml:/app/config.toml:ro
+      - cfspeed-data:/data
+    ports:
+      - "127.0.0.1:8788:8788"
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
+    stop_grace_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+volumes:
+  cfspeed-data:

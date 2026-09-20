@@ -1,0 +1,1 @@
+<script setup lang="ts">withDefaults(defineProps<{ message?: string; kind?: 'error' | 'success' | 'info' }>(), { kind: 'error', message: '' })</script><template><div v-if="message" :class="['notice', kind]" :role="kind === 'error' ? 'alert' : 'status'">{{ message }}</div></template>

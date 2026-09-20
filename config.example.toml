@@ -1,0 +1,31 @@
+# 本机 / 直接运行配置。默认只获取 IP，不操作 DNS。
+[service]
+source_url = "https://ip.164746.xyz/ipTop.html"
+interval_seconds = 21600 # 6 hours
+timeout_seconds = 15
+attempts = 3
+max_ips = 30
+dry_run = true
+state_dir = "data"
+host = "127.0.0.1"
+port = 8788
+# pushplus_token_env = "PUSHPLUS_TOKEN"  # 可选；预览模式不发通知
+
+# 可重复添加多个目标；只修改已经存在的 A 记录。
+# Cloudflare name 必须为完整小写域名；zone_id 用实际值替换占位符。
+# [[targets]]
+# label = "主域名"
+# provider = "cloudflare"
+# zone_id = "REPLACE_WITH_YOUR_32_HEX_ZONE_ID"
+# name = "cf.example.com"
+# token_env = "CF_API_TOKEN"
+
+# DNSPod name 为主机名（根域名用 @），line_id=0 为默认线路。
+# [[targets]]
+# label = "DNSPod 默认线路"
+# provider = "dnspod"
+# domain = "example.com"
+# name = "cf"
+# line_id = "0"
+# secret_id_env = "DNSPOD_SECRET_ID"
+# secret_key_env = "DNSPOD_SECRET_KEY"

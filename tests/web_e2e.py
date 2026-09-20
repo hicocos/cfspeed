@@ -1,0 +1,167 @@
+"""Real cfspeed browser E2E. Only isolated server; never uses real DNS credentials.
+The caller starts cfspeed against a temporary data directory, and passes its
+bootstrap credentials file. No API responses are mocked in this script.
+"""
+import argparse
+import json
+import re
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
+
+parser=argparse.ArgumentParser()
+parser.add_argument('--url',default='http://127.0.0.1:18788')
+parser.add_argument('--credentials',required=True)
+args=parser.parse_args()
+credentials={'username':'admin','password':Path(args.credentials).read_text().strip()}
+base=args.url
+OUT=Path(__file__).resolve().parents[1] / 'artifacts';OUT.mkdir(exist_ok=True)
+report={'real_backend':True,'provider_credentials':False,'checks':[],'browser_errors':[]}
+password=credentials['password']
+
+def check(name):
+    report['checks'].append(name)
+
+with sync_playwright() as p:
+    browser=p.chromium.launch(headless=True,args=['--no-sandbox'])
+    context=browser.new_context(viewport={'width':1440,'height':1000},reduced_motion='reduce')
+    page=context.new_page()
+    page.on('pageerror',lambda error:report['browser_errors'].append(str(error)))
+    def login(secret):
+        page.goto(base+'/admin/login')
+        page.get_by_label('用户名',exact=True).fill(credentials['username'])
+        page.get_by_label('密码',exact=True).fill(secret)
+        page.get_by_role('button',name='登录',exact=True).click()
+    page.goto(base+'/admin/stats')
+    expect(page.get_by_role('heading',name='管理员登录')).to_be_visible()
+    check('unauthenticated route redirects to login')
+    login('wrong-password-for-local-test')
+    expect(page.locator('.notice')).to_be_visible()
+    check('invalid login displays error')
+    login(password)
+    expect(page.get_by_role('heading',name='总览与统计')).to_be_visible()
+    check('real bootstrap login')
+    expect(page.locator('.ip-row code').first).to_be_visible(timeout=20000)
+    page.screenshot(path=str(OUT/'web-overview-desktop.png'),full_page=True,animations='disabled')
+    page.get_by_role('button',name='立即预览',exact=True).click()
+    expect(page.get_by_text('预览任务已提交，不会修改 DNS。',exact=True)).to_be_visible()
+    check('manual preview accepted by real backend')
+    page.goto(base+'/admin/history')
+    expect(page.get_by_role('button',name='查看详情').first).to_be_visible()
+    page.get_by_role('button',name='查看详情').first.click()
+    expect(page.get_by_role('dialog')).to_be_visible()
+    expect(page.get_by_text('本轮只读取 IP 源，没有配置 DNS 目标。')).to_be_visible()
+    page.get_by_role('button',name='关闭对话框').click()
+    expect(page.get_by_role('button',name='删除',exact=True)).to_have_count(0)
+    expect(page.get_by_text('最近 30 轮',exact=True)).to_be_visible()
+    check('real run history/detail, original 30-round cap, no deletion controls')
+    page.goto(base+'/admin/targets')
+    page.get_by_role('button',name='添加目标',exact=True).first.click()
+    dialog=page.get_by_role('dialog')
+    dialog.get_by_label('目标名称',exact=True).fill('浏览器测试目标')
+    dialog.get_by_placeholder('cf.example.com',exact=True).fill('cf.example.com')
+    dialog.get_by_placeholder('32 位小写十六进制 ID').fill('a'*32)
+    # Intentionally no token: scheduler cannot call the provider and save stays preview.
+    dialog.get_by_role('button',name='保存为预览').click()
+    expect(page.get_by_text('浏览器测试目标',exact=True)).to_be_visible()
+    expect(page.get_by_text('待配置凭据',exact=True)).to_be_visible()
+    page.reload()
+    expect(page.get_by_text('浏览器测试目标',exact=True)).to_be_visible()
+    check('save target and read it back after full reload without credentials')
+    page.get_by_role('button',name='编辑',exact=True).click()
+    dialog.get_by_label('目标名称',exact=True).fill('已编辑测试目标')
+    dialog.get_by_role('button',name='保存为预览').click()
+    expect(page.get_by_text('已编辑测试目标',exact=True)).to_be_visible()
+    page.get_by_role('button',name='移除',exact=True).click()
+    page.get_by_role('button',name='确认移除',exact=True).click()
+    expect(page.get_by_role('heading',name='暂无 DNS 目标',exact=True)).to_be_visible()
+    check('edit and remove target, no provider writes')
+    page.goto(base+'/admin/settings')
+    expect(page.get_by_role('heading',name='任务调度',exact=True)).to_be_visible()
+    expect(page.get_by_role('heading',name='PushPlus 通知',exact=True)).to_have_count(0)
+    expect(page.get_by_placeholder('留空关闭；启用填 PUSHPLUS_TOKEN')).to_have_count(0)
+    expect(page.get_by_placeholder('留空保留已保存的令牌')).to_have_count(0)
+    expect(page.get_by_label('同步记录保留天数')).to_have_count(0)
+    interval = page.get_by_label('运行间隔（h）')
+    expect(interval).to_have_value('6')
+    expect(interval).to_have_attribute('step','any')
+    for invalid in ('', '0', '169'):
+        interval.fill(invalid)
+        page.get_by_role('button',name='保存设置',exact=True).click()
+        assert not interval.evaluate('(el)=>el.checkValidity()')
+    interval.fill('0.0084')
+    page.get_by_role('button',name='保存设置',exact=True).click()
+    expect(page.get_by_text('运行间隔须对应整数秒，范围为 30 秒至 168 h。',exact=True).first).to_be_visible()
+    interval.fill('1.5')
+    with page.expect_request(lambda r: r.method=='PATCH' and r.url.endswith('/api/admin/config')) as request:
+        page.get_by_role('button',name='保存设置',exact=True).click()
+    payload = request.value.post_data_json
+    assert payload['service']['interval_seconds'] == 5400
+    assert 'secrets' not in payload and 'pushplus_token_env' not in payload['service']
+    expect(page.get_by_text('设置已保存并生效。',exact=True)).to_be_visible()
+    page.reload()
+    expect(interval).to_have_value('1.5')
+    check('hour input rejects empty/out-of-range/fractional seconds; 1.5 h saves as 5400 seconds and reloads')
+    interval.fill('6')
+    page.get_by_role('button',name='保存设置',exact=True).click()
+    expect(page.get_by_text('设置已保存并生效。',exact=True)).to_be_visible()
+    page.get_by_label('运行模式').select_option(label='正式同步 · 按周期更新 DNS')
+    page.get_by_role('button',name='保存设置',exact=True).click()
+    expect(page.get_by_role('button',name='确认启用',exact=True)).to_be_disabled()
+    page.get_by_role('button',name='取消',exact=True).click()
+    page.reload()
+    expect(page.get_by_label('运行模式')).to_have_value('true')
+    check('settings persisted, explicit live-mode confirmation cannot be bypassed by normal UI')
+    page.goto(base+'/admin/profile')
+    page.get_by_label('当前密码',exact=True).fill(password)
+    new_password='Test8!ab'  # isolated fixture, exactly the newly allowed minimum
+    assert len(new_password) == 8
+    expect(page.get_by_label('新密码',exact=True)).to_have_attribute('minlength','8')
+    expect(page.get_by_label('再次输入新密码',exact=True)).to_have_attribute('minlength','8')
+    page.get_by_label('新密码',exact=True).press_sequentially('1234567')
+    page.get_by_label('再次输入新密码',exact=True).press_sequentially('1234567')
+    page.get_by_role('button',name='更新密码',exact=True).click()
+    assert page.get_by_label('新密码',exact=True).evaluate('(el)=>el.validity.tooShort')
+    expect(page.get_by_role('heading',name='修改密码',exact=True)).to_be_visible()
+    page.get_by_label('新密码',exact=True).fill(new_password)
+    page.get_by_label('再次输入新密码',exact=True).fill(new_password)
+    page.get_by_role('button',name='更新密码',exact=True).click()
+    expect(page.get_by_role('heading',name='管理员登录')).to_be_visible()
+    login(new_password)
+    expect(page.get_by_role('heading',name='总览与统计')).to_be_visible()
+    check('7-character password blocked; 8-character password changes, revokes session and logs in')
+    # Restore fixture password, so the caller can verify persisted state on restart.
+    page.goto(base+'/admin/profile')
+    page.get_by_label('当前密码',exact=True).fill(new_password)
+    page.get_by_label('新密码',exact=True).fill(password)
+    page.get_by_label('再次输入新密码',exact=True).fill(password)
+    page.get_by_role('button',name='更新密码',exact=True).click()
+    expect(page.get_by_role('heading',name='管理员登录')).to_be_visible()
+    login(password)
+    expect(page.get_by_role('heading',name='总览与统计')).to_be_visible()
+    for width,height in [(1440,1000),(390,844),(320,780)]:
+        page.set_viewport_size({'width':width,'height':height})
+        for path,title in [('stats','总览与统计'),('targets','DNS 目标'),('history','同步记录'),('settings','服务设置'),('profile','账户安全'),('docs','使用文档')]:
+            page.goto(base+'/admin/'+path)
+            expect(page.get_by_role('heading',name=title,exact=True)).to_be_visible()
+            page.evaluate('document.fonts.ready')
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),(width,path)
+        page.goto(base+'/admin/stats')
+        expect(page.get_by_role('heading',name='总览与统计')).to_be_visible()
+        expect(page.locator('.ip-row code').first).to_be_visible()
+        if width==390:
+            page.screenshot(path=str(OUT/'web-overview-mobile.png'),full_page=True,animations='disabled')
+            page.get_by_role('button',name='展开管理导航').click()
+            expect(page.locator('.admin-sidebar.open')).to_be_visible()
+            page.locator('.admin-sidebar').get_by_role('link',name='DNS 目标',exact=True).click()
+            expect(page.get_by_role('heading',name='DNS 目标',exact=True)).to_be_visible()
+            assert not page.locator('.admin-sidebar.open').count()
+        check(f'all six pages fit viewport {width}')
+    page.set_viewport_size({'width':1440,'height':1000})
+    page.get_by_role('button',name='退出登录',exact=True).click()
+    page.get_by_role('dialog').get_by_role('button',name='退出登录',exact=True).click()
+    expect(page.get_by_role('heading',name='管理员登录')).to_be_visible()
+    check('logout invalidates session')
+    browser.close()
+(OUT/'web-e2e-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+print(json.dumps(report,ensure_ascii=False,indent=2))
+assert not report['browser_errors']

@@ -1,0 +1,1 @@
+<script setup lang="ts">import Icon from '../components/Icon.vue'</script><template><main id="main-content" class="login-page"><section class="login-card card"><span class="eyebrow">404</span><h1>页面不存在</h1><p class="muted">这个地址不存在，或已被移除。</p><RouterLink class="btn primary" to="/admin/stats">返回控制台 <Icon name="arrow" :size="17"/></RouterLink></section></main></template>

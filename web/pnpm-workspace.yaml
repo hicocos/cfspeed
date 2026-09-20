@@ -1,0 +1,6 @@
+# pnpm 11 replaces onlyBuiltDependencies with allowBuilds.
+# Approve only the pinned esbuild dependency's native-binary install check.
+overrides:
+  esbuild: 0.28.1
+allowBuilds:
+  esbuild: true

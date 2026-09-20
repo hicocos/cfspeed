@@ -1,0 +1,12 @@
+# Docker 中监听容器网卡；宿主机仍只映射到 127.0.0.1。
+[service]
+source_url = "https://ip.164746.xyz/ipTop.html"
+interval_seconds = 21600 # 6 hours
+timeout_seconds = 15
+attempts = 3
+max_ips = 30
+dry_run = true
+state_dir = "/data"
+host = "0.0.0.0"
+port = 8788
+# 添加目标请参照 config.example.toml。

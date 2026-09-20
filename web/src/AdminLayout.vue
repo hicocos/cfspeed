@@ -1,0 +1,21 @@
+<script setup lang="ts">
+import {ref,watch,nextTick,onMounted,onBeforeUnmount} from 'vue'
+import {useRoute,useRouter} from 'vue-router'
+import {api,errorText,session} from './lib/api'
+import Icon from './components/Icon.vue'
+import SiteLogo from './components/SiteLogo.vue'
+import Notice from './components/Notice.vue'
+import Modal from './components/Modal.vue'
+const route=useRoute(),router=useRouter(),menu=ref(false),error=ref(''),logoutOpen=ref(false),busy=ref(false)
+const rail=ref<HTMLElement>(),trigger=ref<HTMLButtonElement>()
+const links=[{path:'stats',name:'总览与统计',icon:'chart',group:'工作空间'},{path:'targets',name:'DNS 目标',icon:'globe'},{path:'history',name:'同步记录',icon:'clock'},{path:'settings',name:'服务设置',icon:'settings',group:'配置与安全'},{path:'profile',name:'账户安全',icon:'user'},{path:'docs',name:'使用文档',icon:'book',group:'调用工具'}]
+const desktop=window.matchMedia('(min-width:761px)');let oldOverflow=''
+watch(()=>route.fullPath,()=>{menu.value=false})
+watch(menu,async value=>{if(value){oldOverflow=document.body.style.overflow;document.body.style.overflow='hidden';await nextTick();rail.value?.querySelector<HTMLElement>('a')?.focus()}else{document.body.style.overflow=oldOverflow;trigger.value?.focus()}})
+function resize(){if(desktop.matches)menu.value=false}
+function keydown(e:KeyboardEvent){if(!menu.value)return;if(e.key==='Escape'){menu.value=false;e.preventDefault()}if(e.key==='Tab'){const nodes=rail.value?.querySelectorAll<HTMLElement>('a,button:not(:disabled)');if(!nodes?.length)return;const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){last?.focus();e.preventDefault()}else if(!e.shiftKey&&document.activeElement===last){first?.focus();e.preventDefault()}}}
+onMounted(()=>{desktop.addEventListener('change',resize);window.addEventListener('keydown',keydown)})
+onBeforeUnmount(()=>{desktop.removeEventListener('change',resize);window.removeEventListener('keydown',keydown);if(menu.value)document.body.style.overflow=oldOverflow})
+async function logout(){busy.value=true;error.value='';try{await api('/api/auth/logout',{method:'POST',body:{}});Object.assign(session,{authenticated:false,username:'',csrf:'',checked:false});await router.replace('/admin/login')}catch(e){error.value=errorText(e)}finally{busy.value=false;logoutOpen.value=false}}
+</script>
+<template><div class="admin-shell"><button v-if="menu" class="sidebar-overlay" aria-label="关闭导航" @click="menu=false"/><aside ref="rail" :class="['admin-sidebar',{open:menu}]" aria-label="控制台侧栏"><RouterLink to="/admin/stats" class="brand"><span class="brand-mark"><SiteLogo :size="23"/></span><span>cfspeed<small>管理控制台</small></span></RouterLink><nav aria-label="管理导航"><template v-for="item in links" :key="item.path"><span v-if="item.group" class="nav-group">{{item.group}}</span><RouterLink :to="'/admin/'+item.path" @click="menu=false"><Icon :name="item.icon" :size="19"/>{{item.name}}</RouterLink></template></nav><div class="sidebar-bottom"><a href="/ipTop.html" class="sidebar-public" target="_blank" rel="noopener"><Icon name="external" :size="17"/>查看 IP 接口</a><div class="user-block"><span class="avatar">{{session.username.slice(0,1).toUpperCase()}}</span><div><strong>{{session.username}}</strong><small>管理员</small></div><button class="icon-btn" aria-label="退出登录" @click="logoutOpen=true"><Icon name="logout" :size="19"/></button></div></div></aside><div class="admin-workspace" :inert="menu"><header class="admin-topbar"><div class="inline"><button ref="trigger" class="icon-btn admin-menu" aria-label="展开管理导航" :aria-expanded="menu" @click="menu=!menu"><Icon name="menu"/></button><span class="muted">工作空间</span><span class="breadcrumb-divider">/</span><strong>{{route.meta.title}}</strong></div><RouterLink to="/admin/docs" class="text-link"><Icon name="book" :size="17"/><span>使用文档</span></RouterLink></header><main id="main-content" class="admin-main"><Notice :message="error"/><RouterView/></main><footer class="admin-footer"><span>cfspeed · DNS 同步服务</span><span>Cloudflare / DNSPod</span></footer></div><Modal :open="logoutOpen" title="退出登录" :busy="busy" @close="logoutOpen=false"><p>确认退出当前管理会话？</p><div class="modal-actions"><button class="btn" :disabled="busy" @click="logoutOpen=false">取消</button><button class="btn primary" :disabled="busy" @click="logout">退出登录</button></div></Modal></div></template>
