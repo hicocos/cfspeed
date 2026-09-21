@@ -23,10 +23,21 @@ class CarrierSourceTests(unittest.TestCase):
     def test_first_entry_from_each_exact_endpoint(self):
         result, http = self.fetch()
         self.assertEqual(result, ['1.1.1.1', '8.8.8.8', '208.67.222.222'])
-        self.assertEqual([call.args for call in http.request.call_args_list],
-                         [('GET', V2TOO_SOURCE_URL + '?carrier=' + carrier) for carrier in ('ct', 'cm', 'cu')])
-        for call in http.request.call_args_list:
-            self.assertEqual(call.kwargs, {'limit': 65536, 'retry': True})
+        from urllib.parse import urlsplit, parse_qs
+        urls = []
+        for carrier, call in zip(('ct', 'cm', 'cu'), http.request.call_args_list):
+            self.assertEqual(call.args[0], 'GET')
+            parts = urlsplit(call.args[1])
+            self.assertEqual(f'{parts.scheme}://{parts.netloc}{parts.path}', V2TOO_SOURCE_URL)
+            query = parse_qs(parts.query)
+            self.assertEqual(set(query), {'carrier', '_cfspeed_nonce'})
+            self.assertEqual(query['carrier'], [carrier])
+            self.assertRegex(query['_cfspeed_nonce'][0], r'^[0-9a-f]{32}$')
+            urls.append(call.args[1])
+            self.assertEqual(call.kwargs, {'limit': 65536, 'retry': True, 'headers': {
+                'Cache-Control': 'no-cache, no-store, max-age=0', 'Pragma': 'no-cache'}})
+        _, second = self.fetch()
+        self.assertTrue(set(urls).isdisjoint(call.args[1] for call in second.request.call_args_list))
 
     def test_duplicate_first_ips_are_deduplicated_without_replacement(self):
         self.rows[1][0]['ip'] = '1.1.1.1'

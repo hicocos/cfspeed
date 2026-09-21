@@ -4,6 +4,7 @@ from http.client import HTTPException
 import json
 import os
 import re
+import secrets
 import ssl
 import time
 import threading
@@ -108,7 +109,13 @@ def fetch_ips(config, http):
         selected = []
         for carrier in ('ct', 'cm', 'cu'):
             try:
-                raw = http.request('GET', f'{V2TOO_SOURCE_URL}?carrier={carrier}', limit=65536, retry=True)
+                # Best-effort cache avoidance, not proof of upstream freshness.
+                # Keep this source-specific: do not alter signed/custom URLs or DNS APIs.
+                url = f'{V2TOO_SOURCE_URL}?carrier={carrier}&_cfspeed_nonce={secrets.token_hex(16)}'
+                raw = http.request('GET', url, headers={
+                    'Cache-Control': 'no-cache, no-store, max-age=0',
+                    'Pragma': 'no-cache',
+                }, limit=65536, retry=True)
                 nodes = json.loads(raw)
                 if not isinstance(nodes, list) or not nodes or not isinstance(nodes[0], dict):
                     raise ValueError()

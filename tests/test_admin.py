@@ -152,6 +152,60 @@ class AdminTests(unittest.TestCase):
         self.assertEqual(response[0], 200, response)
         return response[1]
 
+    def test_source_refresh_requires_auth_csrf_origin_and_empty_payload(self):
+        path = '/api/admin/source/refresh'
+        self.assertEqual(self.request('POST', path, {}, authorized=False)[0], 401)
+        self.login()
+        self.assertEqual(self.request('POST', path, {}, {'X-CSRF-Token': None})[0], 403)
+        self.assertEqual(self.request('POST', path, {}, {'Origin': 'https://other.example'})[0], 403)
+        self.assertEqual(self.request('POST', path, {'dry_run': False})[0], 400)
+        self.assertEqual(self.http.calls, 0)
+
+    def test_source_refresh_reserves_without_dns_or_deadline_changes(self):
+        self.login()
+        self.add_cf(apply=True)
+        self.runner.state.save(pending_operations=[{'fixture': 'preserved'}])
+        before = self.runner.state.snapshot()
+        deadline = self.runner.next_due
+        self.http.release.clear()
+        self.assertEqual(self.request('POST', '/api/admin/source/refresh', {})[0], 202)
+        self.assertTrue(self.http.started.wait(2))
+        self.assertEqual(self.runner.state.snapshot()['source_status'], 'running')
+        self.assertEqual(self.request('POST', '/api/admin/source/refresh', {})[0], 409)
+        self.assertEqual(self.request('POST', '/api/admin/run', {'dry_run': True})[0], 409)
+        self.assertEqual(self.save(service={'max_ips': 5})[0], 409)
+        self.http.release.set()
+        self.runner.worker.join(5)
+        after = self.runner.state.snapshot()
+        self.assertEqual(after['ips'], ['1.1.1.1', '8.8.8.8'])
+        self.assertEqual(after['history'][-1]['kind'], 'source')
+        self.assertEqual(after['source_status'], 'ok')
+        self.assertEqual(after['pending_operations'], before['pending_operations'])
+        self.assertEqual(after['next_dns_run_at'], before['next_dns_run_at'])
+        self.assertEqual(self.runner.next_due, deadline)
+        self.assertFalse(self.providers)
+        self.assertTrue(self.runner.lock.acquire(blocking=False))
+        self.runner.lock.release()
+
+    def test_source_refresh_failure_retains_ips_and_allows_retry(self):
+        self.login()
+        self.runner.refresh_source()
+        before = self.runner.state.snapshot()
+        self.http.error = True
+        self.assertEqual(self.request('POST', '/api/admin/source/refresh', {})[0], 202)
+        self.runner.worker.join(5)
+        failed = self.runner.state.snapshot()
+        self.assertEqual(failed['source_status'], 'error')
+        self.assertIn('fixture source failure', failed['source_error'])
+        self.assertEqual(failed['ips'], before['ips'])
+        self.assertFalse(failed['source_valid'])
+        self.assertEqual(failed['next_dns_run_at'], before['next_dns_run_at'])
+        self.http.error = False
+        self.assertEqual(self.request('POST', '/api/admin/source/refresh', {})[0], 202)
+        self.runner.worker.join(5)
+        self.assertEqual(self.runner.state.snapshot()['source_status'], 'ok')
+        self.assertFalse(self.providers)
+
     def test_retired_history_setting_loads_without_rewriting_authenticated_config(self):
         from cfspeed.admin import persist_admin_data, read_admin_data
         self.login()

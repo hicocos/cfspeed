@@ -318,6 +318,10 @@ def create_server(runner, *, static_dir=None):
                         return self.respond(200, {'ok': True}, cookie=self.cookie('', secure))
                     if path == '/api/admin/config' and self.command == 'PATCH':
                         return self.respond(200, admin.update(payload))
+                    if path == '/api/admin/source/refresh' and self.command == 'POST':
+                        keys(payload, (), 'source refresh')
+                        runner.start_source_async()
+                        return self.respond(202, {'accepted': True})
                     if path == '/api/admin/run' and self.command == 'POST':
                         keys(payload, ('dry_run', 'confirm_apply'), 'run')
                         runner.start_async(payload.get('dry_run'), payload.get('confirm_apply', False))

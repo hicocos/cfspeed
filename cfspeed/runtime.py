@@ -196,7 +196,8 @@ class Runner:
             else:
                 self.last_completed = time.monotonic()
                 self.next_due = self.last_completed + self.config.interval_seconds
-            self.state.save(**self._deadlines(self.next_due, self.next_source_due))
+            deadlines = self._deadlines(self.next_due, self.next_source_due)
+            self.state.save(**({'next_source_run_at': deadlines['next_source_run_at']} if source else deadlines))
             self.condition.notify_all()
 
     def _fetch(self, config):
@@ -233,19 +234,52 @@ class Runner:
                 raise AppError('服务正在停止')
             if scheduled and time.monotonic() < self.next_source_due:
                 return None
-            result = {'kind': 'source', 'mode': 'source', 'started_at': now(), 'status': 'ok',
-                      'changed': 0, 'planned': 0, 'targets': [], 'error': None}
-            self.state.save(current_run=copy.deepcopy(result))
-            try:
-                result['ip_count'] = len(self._fetch(self.config))
-            except Exception as error:
-                result.update(status='error', error=safe_error(error))
-            result['finished_at'] = now()
-            snapshot = self.state.snapshot()
-            self.state.save(current_run=None, history=snapshot['history'] + [result], runs=snapshot['runs'] + 1)
-            return result
+            return self._refresh_source()
         finally:
             self.lock.release()
+
+    def _refresh_source(self):
+        """Caller holds the shared reservation for the entire source job."""
+        result = {'kind': 'source', 'mode': 'source', 'started_at': now(), 'status': 'ok',
+                  'changed': 0, 'planned': 0, 'targets': [], 'error': None}
+        self.state.save(current_run=copy.deepcopy(result))
+        try:
+            result['ip_count'] = len(self._fetch(self.config))
+        except Exception as error:
+            result.update(status='error', error=safe_error(error))
+        result['finished_at'] = now()
+        snapshot = self.state.snapshot()
+        self.state.save(current_run=None, history=snapshot['history'] + [result], runs=snapshot['runs'] + 1)
+        return result
+
+    def start_source_async(self):
+        from .admin import AdminError
+        if not self.lock.acquire(blocking=False):
+            raise AdminError('任务已经在运行', 409)
+        handed_off = False
+        try:
+            if self.stop.is_set():
+                raise AdminError('服务正在停止', 409)
+            # Expose the reservation before returning 202, without moving DNS deadlines.
+            self.state.save(source_status='running', source_error=None)
+            def work():
+                try:
+                    self._refresh_source()
+                except Exception as error:
+                    self.source_ips = None
+                    self.source_success_time = None
+                    self.session_success = False
+                    LOG.error('%s', safe_error(error))
+                    self.state.save(source_status='error', source_valid=False,
+                                    source_error=safe_error(error), current_run=None)
+                finally:
+                    self.lock.release()
+            self.worker = threading.Thread(target=work, name='manual-source', daemon=True)
+            self.worker.start()
+            handed_off = True
+        finally:
+            if not handed_off:
+                self.lock.release()
 
     def start_async(self, dry_run, confirm_apply=False):
         from .admin import AdminError
